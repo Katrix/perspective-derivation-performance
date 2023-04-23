@@ -1,6 +1,10 @@
-import java.nio.file.{Files, Path}
+import java.io.File
+import java.nio.file.{Files, Path, Paths}
 
 import scala.jdk.CollectionConverters._
+import scala.sys.process.ProcessLogger
+
+import sbt.{Def, Task}
 
 object GenerateCirceSources {
 
@@ -115,16 +119,70 @@ object GenerateCirceSources {
     s"""|${generateCaseClass(caseClass)}
         |${generateDerives(caseClass, caseClass.tpeName, genTpe)}""".stripMargin
 
-  def generateCompiletimeFiles(rootPath: Path, caseClasses: Seq[CaseClass], isScala3: Boolean): Unit = {
+  def compile(
+      path: Path,
+      outputPath: Path,
+      classPath: Seq[File],
+      isScala3: Boolean,
+      compilers: xsbti.compile.Compilers
+  ): Unit = {
+    val scalaInstance = compilers.scalac().scalaInstance()
+
+    val compilerJar = scalaInstance.compilerJars()(0)
+
+    val args = if (sys.props("os.name").toLowerCase.contains("win")) {
+      List("cmd", "/C")
+    } else {
+      List("bash", "-c")
+    }
+
+    println(s"Compiling $path")
+
+    sys.process
+      .Process(
+        args ++ List(
+          "java",
+          "-Xss8m",
+          "-cp",
+          scalaInstance.allJars().toSeq.map(_.getAbsoluteFile).mkString(File.pathSeparator),
+          if (isScala3) "dotty.tools.dotc.Main" else "scala.tools.nsc.Main",
+          if (classPath.nonEmpty) "-cp" else "",
+          classPath.map(_.getAbsoluteFile).mkString(File.pathSeparator),
+          path.toAbsolutePath.toString
+        ),
+        outputPath.toFile
+      )
+      .!!
+  }
+
+  def generateCompiletimeFiles(
+      rootPath: Path,
+      packageStr: Seq[String],
+      caseClasses: Seq[CaseClass],
+      isScala3: Boolean,
+      compileCp: Seq[File],
+      compileFiles: Seq[String],
+      compiler: xsbti.compile.Compilers
+  ): Unit = {
+    val packagePath = packageStr.foldLeft(rootPath)(_.resolve(_))
+    val packageLoc  = packageStr.mkString(".")
+
+    compileFiles.foreach(f => compile(packagePath.resolve(f), rootPath, compileCp, isScala3, compiler))
+
     for {
       caseClass <- caseClasses
     } {
-      Files.createDirectories(rootPath)
+
+      Files.createDirectories(packagePath)
+      val caseClassPath = packagePath.resolve(caseClass.tpeName + ".scala")
       Files.write(
-        rootPath.resolve(caseClass.tpeName + ".scala"),
-        s"""|import io.circe._
+        caseClassPath,
+        s"""|package $packageLoc
+            |
+            |import io.circe._
             |${generateCaseClass(caseClass)}""".stripMargin.linesIterator.toSeq.asJava
       )
+      compile(caseClassPath, rootPath, compileCp, isScala3, compiler)
 
       for {
         genTpe <- GenType.values(isScala3)
@@ -132,8 +190,10 @@ object GenerateCirceSources {
         val objName = caseClass.tpeName + "Derives" + genTpe.name.capitalize
 
         Files.write(
-          rootPath.resolve(objName + ".scala"),
-          s"""|import io.circe._
+          packagePath.resolve(objName + ".scala"),
+          s"""|package $packageLoc
+              |
+              |import io.circe._
               |${generateDerives(
                caseClass,
                objName,
@@ -144,16 +204,24 @@ object GenerateCirceSources {
     }
   }
 
-  def generateRuntimeFiles(rootPath: Path, caseClasses: Seq[CaseClass], isScala3: Boolean, packageLoc: String): Unit = {
+  def generateRuntimeFiles(
+      rootPath: Path,
+      packageStr: Seq[String],
+      caseClasses: Seq[CaseClass],
+      isScala3: Boolean
+  ): Unit = {
     for {
       genTpe <- GenType.values(isScala3)
     } {
+      val packagePath = packageStr.foldLeft(rootPath)(_.resolve(_))
+      val packageLoc  = packageStr.mkString(".")
+
       def classLines(mkLine: CaseClass => String, i: Int = 0): String =
         caseClasses.map(mkLine).mkString("\n").linesIterator.mkString("\n" + "  " * (i + 1))
 
-      Files.createDirectories(rootPath)
+      Files.createDirectories(packagePath)
       Files.write(
-        rootPath.resolve(genTpe.name.capitalize + "Defs.scala"),
+        packagePath.resolve(genTpe.name.capitalize + "Defs.scala"),
         s"""|package $packageLoc
             |
             |import io.circe._
@@ -176,6 +244,9 @@ object GenerateCirceSources {
             |
             |  @State(Scope.Benchmark)
             |  class EncodeData {
+            |    @Param(Array("1234"))
+            |    var randSeed: Int = _
+            |
             |    ${classLines(c => s"var v${c.tpeName}: ${c.tpeName} = null", i = 1)}
             |    
             |    @Param(Array(${caseClasses.map(c => s""""${c.intId}"""").mkString(", ")}))
@@ -187,7 +258,7 @@ object GenerateCirceSources {
             |    
             |    @Setup
             |    def setup(): Unit = {
-            |      val rand: Random = new Random(1234)
+            |      val rand: Random = new Random(randSeed)
             |      ${classLines(
              c => s"v${c.tpeName} = ${c.tpeName}(${c.fields.map(f => s"genField[${f._2}](rand)").mkString(", ")})",
              i = 2
@@ -197,6 +268,9 @@ object GenerateCirceSources {
             |  
             |  @State(Scope.Benchmark)
             |  class DecodeData {
+            |    @Param(Array("1234"))
+            |    var randSeed: Int = _
+            |
             |    ${classLines(c => s"var s${c.tpeName}: Json = null", i = 1)}
             |    
             |    @Param(Array(${caseClasses.map(c => s""""${c.intId}"""").mkString(", ")}))
@@ -208,7 +282,7 @@ object GenerateCirceSources {
             |    
             |    @Setup
             |    def setup(): Unit = {
-            |      val rand: Random = new Random(1234)
+            |      val rand: Random = new Random(randSeed)
             |      ${classLines(
              c =>
                s"s${c.tpeName} = ${c.tpeName}(${c.fields.map(f => s"genField[${f._2}](rand)").mkString(", ")}).asJson",
@@ -221,12 +295,46 @@ object GenerateCirceSources {
     }
   }
 
+  val typeSizes: Seq[Int] = Seq(5, 50) // Seq(1, 5, 10, 20, 22, 23, 30, 50, 75, 99)
+
   lazy val circeDerivationCaseClasses: Seq[CaseClass] = {
-    val sizes      = Seq(5) // Seq(1, 5, 10, 20, 22, 23, 30, 50, 75, 99)
     val fieldTypes = Seq("Int", "String", "Double", "Boolean", "Json")
 
-    sizes.map { size =>
+    typeSizes.map { size =>
       CaseClass(s"BenchmarkCaseClass$size", Seq.tabulate(size)(i => (s"f$i", fieldTypes(i % fieldTypes.length))), size)
     }
+  }
+
+  val CompiletimeBenchmark = sbt.config("compiletimeBenchmark").hide
+
+  def resolveCompiletimeBenchmarkClasspath = sbt.Def.task {
+    sbt.Classpaths.managedJars(
+      CompiletimeBenchmark,
+      (CompiletimeBenchmark / sbt.Keys.classpathTypes).value,
+      sbt.Keys.update.value
+    )
+  }
+
+  def jmhCompiletimeParams(rootPath: Path, packageStr: Seq[String], isScala3: Boolean, compileCp: Seq[File]): String = {
+    val packagePath = packageStr.foldLeft(rootPath)(_.resolve(_))
+
+    /*
+    val sources = for {
+      caseClass <- circeDerivationCaseClasses
+      genTpe    <- GenType.values(isScala3)
+    } yield packagePath.resolve(s"${caseClass.tpeName}Derives${genTpe.name.capitalize}.scala").toAbsolutePath
+     */
+
+    val dependencies = rootPath.toAbsolutePath.toFile +: compileCp.map(_.getAbsoluteFile)
+
+    val params = Map(
+      "typeSize"      -> typeSizes.mkString(","),
+      "genType"       -> GenType.values(isScala3).map(_.name.capitalize).mkString(","),
+      "sourceRoot"    -> packagePath.toAbsolutePath.toString,
+      "sourcePattern" -> "BenchmarkCaseClass{0}Derives{1}",
+      "depsClasspath" -> dependencies.mkString(File.pathSeparator)
+    )
+
+    params.map(t => s"${t._1}=${t._2}").mkString("-p ", " -p ", "")
   }
 }

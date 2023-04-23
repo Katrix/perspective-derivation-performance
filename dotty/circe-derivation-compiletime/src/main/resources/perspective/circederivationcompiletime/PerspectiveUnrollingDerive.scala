@@ -6,7 +6,7 @@ import io.circe.Decoder.Result
 import perspective.*
 import perspective.derivation.*
 
-object PerspectiveInlineDerive {
+object PerspectiveUnrollingDerive {
 
   inline given productDecoder[A, Gen[_[_]]](
       using gen: InlineHKDProductGeneric.Aux[A, Gen]
@@ -15,7 +15,10 @@ object PerspectiveInlineDerive {
     private val names    = gen.names
 
     override def apply(cursor: HCursor): Decoder.Result[A] =
-      gen.tabulateTraverseIdK(i => decoders.indexK(i).tryDecode(cursor.downField(names.indexK(i)))) match {
+      gen.tabulateTraverseK[Decoder.Result, Id](
+        i => decoders.indexK(i).tryDecode(cursor.downField(names.indexK(i))),
+        unrolling = true
+      ) match {
         case Right(value) => Right(gen.from(value))
         case Left(e)      => Left(e)
       }
@@ -28,8 +31,23 @@ object PerspectiveInlineDerive {
     private val names    = gen.names
 
     override def apply(a: A): Json = {
-      val list = gen.tabulateFoldLeft(Nil: List[(String, Json)]) { (acc, i) =>
-        (names.indexK(i), encoders.indexK(i)(a.productElementId(i))) :: acc
+      val list = gen.tabulateFoldLeft(Nil: List[(String, Json)], unrolling = true) { (acc, i) =>
+        val json = gen.lateInlineMatch {
+          a.productElementIdExact(i) match {
+            case p: Byte    => Json.fromInt(p)
+            case p: Short   => Json.fromInt(p)
+            case p: Int     => Json.fromInt(p)
+            case p: Long    => Json.fromLong(p)
+            case p: Float   => Json.fromFloatOrString(p)
+            case p: Double  => Json.fromDoubleOrString(p)
+            case p: Boolean => Json.fromBoolean(p)
+            case p: Char    => Json.fromString(Character.toString(p))
+            case p: String  => Json.fromString(p)
+            case other      => encoders.indexK(i)(other)
+          }
+        }
+
+        (names.indexK(i), json) :: acc
       }
 
       Json.obj(list: _*)

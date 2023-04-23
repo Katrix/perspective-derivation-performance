@@ -14,13 +14,14 @@ object Shapeless2Derive {
         implicit hDecoder: Decoder[H],
         tDecoder: Shapeless2DeriveDecoder[T],
         key: ValueOf[K]
-    ): Shapeless2DeriveDecoder[FieldType[Symbol @@ K, H] :: T] = new Shapeless2DeriveDecoder[FieldType[Symbol @@ K, H] :: T] {
-      override def apply(c: HCursor): Result[FieldType[Symbol @@ K, H] :: T] =
-        for {
-          h <- c.get(key.value)(hDecoder)
-          t <- tDecoder(c)
-        } yield ::(field[Symbol @@ K](h), t)
-    }
+    ): Shapeless2DeriveDecoder[FieldType[Symbol @@ K, H] :: T] =
+      new Shapeless2DeriveDecoder[FieldType[Symbol @@ K, H] :: T] {
+        override def apply(c: HCursor): Result[FieldType[Symbol @@ K, H] :: T] =
+          for {
+            h <- c.get(key.value)(hDecoder)
+            t <- tDecoder(c)
+          } yield ::(field[Symbol @@ K](h), t)
+      }
 
     implicit def hnilDecoder: Shapeless2DeriveDecoder[HNil] = new Shapeless2DeriveDecoder[HNil] {
       override def apply(c: HCursor): Result[HNil] = Right(HNil)
@@ -35,10 +36,11 @@ object Shapeless2Derive {
         implicit hEncoder: Encoder[H],
         tEncoder: Shapeless2DeriveEncoderParts[T],
         key: ValueOf[K]
-    ): Shapeless2DeriveEncoderParts[FieldType[Symbol @@ K, H] :: T] = new Shapeless2DeriveEncoderParts[FieldType[Symbol @@ K, H] :: T] {
-      override def parts(a: FieldType[Symbol @@ K, H] :: T): List[(String, Json)] =
-        (key.value -> hEncoder(a.head)) :: tEncoder.parts(a.tail)
-    }
+    ): Shapeless2DeriveEncoderParts[FieldType[Symbol @@ K, H] :: T] =
+      new Shapeless2DeriveEncoderParts[FieldType[Symbol @@ K, H] :: T] {
+        override def parts(a: FieldType[Symbol @@ K, H] :: T): List[(String, Json)] =
+          (key.value -> hEncoder(a.head)) :: tEncoder.parts(a.tail)
+      }
 
     implicit def hnilEncoderParts: Shapeless2DeriveEncoderParts[HNil] = new Shapeless2DeriveEncoderParts[HNil] {
       override def parts(a: HNil): List[(String, Json)] = Nil

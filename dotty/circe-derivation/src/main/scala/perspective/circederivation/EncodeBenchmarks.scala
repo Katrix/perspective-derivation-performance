@@ -9,7 +9,7 @@ import io.circe.Json
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 @Fork(1)
 @Warmup(iterations = 3)
-@Measurement(iterations = 5)
+@Measurement(iterations = 3)
 class EncodeBenchmarks {
 
   @Benchmark
