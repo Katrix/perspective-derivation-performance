@@ -295,7 +295,7 @@ object GenerateCirceSources {
     }
   }
 
-  val typeSizes: Seq[Int] = Seq(5, 50) // Seq(1, 5, 10, 20, 22, 23, 30, 50, 75, 99)
+  val typeSizes: Seq[Int] = Seq(1, 5, 10, 22, 23, 50, 75)
 
   lazy val circeDerivationCaseClasses: Seq[CaseClass] = {
     val fieldTypes = Seq("Int", "String", "Double", "Boolean", "Json")

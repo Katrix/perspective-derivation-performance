@@ -36,12 +36,12 @@ trait BaseBenchmarkDriver {
 @State(Scope.Benchmark)
 @BenchmarkMode(Array(Mode.AverageTime))
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
-@Warmup(iterations = 5, time = 10, timeUnit = TimeUnit.SECONDS)
-@Measurement(iterations = 5, time = 10, timeUnit = TimeUnit.SECONDS)
-@Fork(value = 1, jvmArgs = Array("-Xms2G", "-Xmx2G", "-Xss2M"))
-//@Warmup(iterations = 10, time = 10, timeUnit = TimeUnit.SECONDS)
-//@Measurement(iterations = 10, time = 10, timeUnit = TimeUnit.SECONDS)
-//@Fork(value = 3, jvmArgs = Array("-Xms2G", "-Xmx2G", "-Xss2M"))
+//@Warmup(iterations = 5, time = 10, timeUnit = TimeUnit.SECONDS)
+//@Measurement(iterations = 5, time = 10, timeUnit = TimeUnit.SECONDS)
+//@Fork(value = 1, jvmArgs = Array("-Xms2G", "-Xmx2G", "-Xss2M"))
+@Warmup(iterations = 10, time = 10, timeUnit = TimeUnit.SECONDS)
+@Measurement(iterations = 10, time = 10, timeUnit = TimeUnit.SECONDS)
+@Fork(value = 3, jvmArgs = Array("-Xms2G", "-Xmx2G", "-Xss2M"))
 class CompileBenchmark extends BenchmarkDriver {
   @Param(value = Array(""))
   var extraArgs: String = _
