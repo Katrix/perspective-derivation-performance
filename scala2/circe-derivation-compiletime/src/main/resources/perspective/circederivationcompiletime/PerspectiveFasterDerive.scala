@@ -39,7 +39,7 @@ object PerspectiveFasterDerive {
 
     override def apply(a: A): Json = {
       val list = gen.tabulateFoldLeft(Nil: List[(String, Json)]) { acc =>
-        new (gen.Index ~>: ({ type l[A] = Const[List[(String, Json)], A] })#l) {
+        new (gen.Index ~>: ({type L[X] = List[(String, Json)]})#L) {
           override def apply[Z](i: gen.Index[Z]): Const[List[(String, Json)], Z] =
             (names(i), encodersF(i)(gen.productElementId(a, i))) :: acc
         }
@@ -49,31 +49,47 @@ object PerspectiveFasterDerive {
     }
   }
 
-  trait DerivedEncoder[A] {
-    def encoder: Encoder[A]
+  def sumDecoder[A, Gen[_[_]]](
+      implicit gen: HKDSumGeneric.Aux[A, Gen],
+      decoders: Gen[Decoder]
+  ): Decoder[A] = new Decoder[A] {
+
+    import gen.implicits._
+
+    private val decodersF      = decoders.indexKC
+    private val nameToIndexMap = gen.nameToIndexMap
+
+    override def apply(c: HCursor): Decoder.Result[A] = c
+      .downField("$type")
+      .as[String]
+      .flatMap(tpe => nameToIndexMap.get(tpe).toRight(DecodingFailure(s"No type named $tpe found", c.history)))
+      .flatMap { i =>
+        val decoder = decodersF(i)
+        decoder(c).orElse(decoder.tryDecode(c.downField("$value")))
+      }
   }
-  object DerivedEncoder {
-    implicit def derived[A, Gen[_[_]]](
-        implicit gen: HKDProductGeneric.Aux[A, Gen],
-        encoders: Gen[Encoder]
-    ): DerivedEncoder[A] = new DerivedEncoder[A] {
-      override def encoder: Encoder[A] = productEncoder[A, Gen]
+
+  def sumEncoder[A, Gen[_[_]]](
+      implicit gen: HKDSumGeneric.Aux[A, Gen],
+      encoders: Gen[Encoder]
+  ): Encoder[A] = new Encoder[A] {
+
+    import gen.implicits._
+
+    private val encodersF = encoders.indexKC
+    private val namesF    = gen.names.indexKC
+
+    override def apply(a: A): Json = {
+      val idx      = gen.indexOf(a)
+      val nameJson = Json.fromString(namesF(idx))
+      val encoder  = encodersF(idx)
+      val json     = encoder(a)
+
+      json.arrayOrObject(
+        Json.obj("$type" -> nameJson, "$value" -> json),
+        _ => Json.obj("$type" -> nameJson, "$value" -> json),
+        obj => Json.fromJsonObject(obj.add("$type", nameJson))
+      )
     }
   }
-
-  trait DerivedDecoder[A] {
-    def decoder: Decoder[A]
-  }
-
-  object DerivedDecoder {
-    implicit def derived[A, Gen[_[_]]](
-        implicit gen: HKDProductGeneric.Aux[A, Gen],
-        decoders: Gen[Decoder]
-    ): DerivedDecoder[A] = new DerivedDecoder[A] {
-      override def decoder: Decoder[A] = productDecoder[A, Gen]
-    }
-  }
-
-  def deriveEncoder[A](implicit derivedEncoder: DerivedEncoder[A]): Encoder[A] = derivedEncoder.encoder
-  def deriveDecoder[A](implicit derivedDecoder: DerivedDecoder[A]): Decoder[A] = derivedDecoder.decoder
 }

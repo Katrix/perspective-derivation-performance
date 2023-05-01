@@ -38,17 +38,19 @@ lazy val circePerspectiveDerivationScala3 = project
   .dependsOn(shapeless2)
   .settings(
     commonScala3Settings,
-    name                                   := "circe-derivation",
+    name := "circe-derivation",
     scalacOptions ++= Seq("-Xmax-inlines", "128"),
-    libraryDependencies += "io.circe"      %% "circe-core"             % "0.14.3",
-    libraryDependencies += "io.circe"      %% "circe-generic"          % "0.14.3",
-    libraryDependencies += "net.katsstuff" %% "perspective-derivation" % "0.2.0-SNAPSHOT",
-    libraryDependencies += "org.typelevel" %% "shapeless3-deriving"    % "3.0.1",
+    libraryDependencies += "io.circe"                     %% "circe-core"             % "0.14.3",
+    libraryDependencies += "io.circe"                     %% "circe-generic"          % "0.14.3",
+    libraryDependencies += "net.katsstuff"                %% "perspective-derivation" % "0.2.0-SNAPSHOT",
+    libraryDependencies += "org.typelevel"                %% "shapeless3-deriving"    % "3.0.1",
+    libraryDependencies += "com.softwaremill.magnolia1_3" %% "magnolia"               % "1.3.0",
     generateCode := {
       GenerateCirceSources.generateRuntimeFiles(
         (Compile / scalaSource).value.toPath,
         Seq("perspective", "circederivation"),
         GenerateCirceSources.circeDerivationCaseClasses,
+        GenerateCirceSources.circeDerivationSealedHierarchies,
         isScala3 = true
       )
     },
@@ -60,19 +62,22 @@ lazy val circePerspectiveDerivationScala2 = project
   .enablePlugins(JmhPlugin)
   .settings(
     commonScala2Settings,
-    name                                   := "circe-derivation",
-    libraryDependencies += "io.circe"      %% "circe-core"                   % "0.14.3",
-    libraryDependencies += "io.circe"      %% "circe-generic"                % "0.14.3",
-    libraryDependencies += "io.circe"      %% "circe-derivation"             % "0.13.0-M5",
-    libraryDependencies += "net.katsstuff" %% "perspectivescala2-derivation" % "0.2.0-SNAPSHOT",
-    libraryDependencySchemes += "io.circe" %% "circe-core"                   % "always",
-    libraryDependencySchemes += "io.circe" %% "circe-derivation"             % "always",
+    name                                                  := "circe-derivation",
+    libraryDependencies += "io.circe"                     %% "circe-core"                   % "0.14.3",
+    libraryDependencies += "io.circe"                     %% "circe-generic"                % "0.14.3",
+    libraryDependencies += "io.circe"                     %% "circe-derivation"             % "0.13.0-M5",
+    libraryDependencies += "net.katsstuff"                %% "perspectivescala2-derivation" % "0.2.0-SNAPSHOT",
+    libraryDependencies += "com.softwaremill.magnolia1_2" %% "magnolia"                     % "1.1.3",
+    libraryDependencies += "org.scala-lang"                % "scala-reflect"                % scalaVersion.value,
+    libraryDependencySchemes += "io.circe"                %% "circe-core"                   % "always",
+    libraryDependencySchemes += "io.circe"                %% "circe-derivation"             % "always",
     addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.2" cross CrossVersion.full),
     generateCode := {
       GenerateCirceSources.generateRuntimeFiles(
         (Compile / scalaSource).value.toPath,
         Seq("perspective", "circederivation"),
         GenerateCirceSources.circeDerivationCaseClasses,
+        GenerateCirceSources.circeDerivationSealedHierarchies,
         isScala3 = false
       )
     },
@@ -91,10 +96,11 @@ lazy val circePerspectiveDerivationCompiletimeScala3 =
       name                                    := "circe-derivation-compiletime",
       libraryDependencies += "org.scala-lang" %% "scala3-compiler" % scalaVersion.value,
       libraryDependencies ++= Seq(
-        "io.circe"      %% "circe-core"             % "0.14.3",
-        "io.circe"      %% "circe-generic"          % "0.14.3",
-        "net.katsstuff" %% "perspective-derivation" % "0.2.0-SNAPSHOT",
-        "org.typelevel" %% "shapeless3-deriving"    % "3.0.1"
+        "io.circe"                     %% "circe-core"             % "0.14.3",
+        "io.circe"                     %% "circe-generic"          % "0.14.3",
+        "net.katsstuff"                %% "perspective-derivation" % "0.2.0-SNAPSHOT",
+        "org.typelevel"                %% "shapeless3-deriving"    % "3.0.1",
+        "com.softwaremill.magnolia1_3" %% "magnolia"               % "1.3.0"
       ).flatMap(m => List(m, m % CompiletimeBenchmark)),
       CompiletimeBenchmark / managedClasspath := GenerateCirceSources.resolveCompiletimeBenchmarkClasspath.value ++ (Compile / internalDependencyAsJars).value,
       generateCode := {
@@ -110,7 +116,8 @@ lazy val circePerspectiveDerivationCompiletimeScala3 =
             "PerspectiveInlineDerive.scala",
             "PerspectiveUnrollingDerive.scala",
             "Shapeless2Derive.scala",
-            "Shapeless3Derive.scala"
+            "Shapeless3Derive.scala",
+            "MagnoliaDerive.scala"
           ),
           compilers.value
         )
@@ -118,8 +125,8 @@ lazy val circePerspectiveDerivationCompiletimeScala3 =
       ivyConfigurations += CompiletimeBenchmark,
       benchmark := Def.inputTaskDyn {
         val classPathTypes = (CompiletimeBenchmark / classpathTypes).value
-        val cp = (CompiletimeBenchmark / managedClasspath).value
-        val args = Def.spaceDelimited().parsed.mkString(" ")
+        val cp             = (CompiletimeBenchmark / managedClasspath).value
+        val args           = Def.spaceDelimited().parsed.mkString(" ")
 
         val params = GenerateCirceSources.jmhCompiletimeParams(
           (Compile / resourceDirectory).value.toPath,
@@ -143,10 +150,12 @@ lazy val circePerspectiveDerivationCompiletimeScala2 =
       name                                   := "circe-derivation-compiletime",
       libraryDependencies += "org.scala-lang" % "scala-compiler" % scalaVersion.value,
       libraryDependencies ++= Seq(
-        "io.circe"      %% "circe-core"                   % "0.14.3",
-        "io.circe"      %% "circe-generic"                % "0.14.3",
-        "io.circe"      %% "circe-derivation"             % "0.13.0-M5",
-        "net.katsstuff" %% "perspectivescala2-derivation" % "0.2.0-SNAPSHOT"
+        "io.circe"                     %% "circe-core"                   % "0.14.3",
+        "io.circe"                     %% "circe-generic"                % "0.14.3",
+        "io.circe"                     %% "circe-derivation"             % "0.13.0-M5",
+        "net.katsstuff"                %% "perspectivescala2-derivation" % "0.2.0-SNAPSHOT",
+        "com.softwaremill.magnolia1_2" %% "magnolia"                     % "1.1.3",
+        "org.scala-lang"                % "scala-reflect"                % scalaVersion.value
       ).flatMap(m => List(m, m % CompiletimeBenchmark)),
       libraryDependencySchemes ++= Seq(
         "io.circe" %% "circe-core"       % "always",
@@ -163,7 +172,8 @@ lazy val circePerspectiveDerivationCompiletimeScala2 =
           Seq(
             "PerspectiveDerive.scala",
             "PerspectiveFasterDerive.scala",
-            "Shapeless2Derive.scala"
+            "Shapeless2Derive.scala",
+            "MagnoliaDerive.scala"
           ),
           compilers.value
         )

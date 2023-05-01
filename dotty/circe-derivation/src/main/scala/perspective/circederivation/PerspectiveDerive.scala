@@ -1,15 +1,16 @@
 package perspective.circederivation
 
-import cats.Id
+import scala.compiletime.{erasedValue, summonFrom, summonInline}
+
 import io.circe.*
 import perspective.*
 import perspective.derivation.*
 
 object PerspectiveDerive {
 
-  def productDecoder[A, Gen[_[_]]](
-      using gen: HKDProductGeneric.Aux[A, Gen],
-      decoders: Gen[Decoder]
+  def productDecoder[A](
+      using gen: HKDProductGeneric[A],
+      decoders: gen.Gen[Decoder]
   ): Decoder[A] = new Decoder[A] {
     private val names = gen.names
 
@@ -24,9 +25,9 @@ object PerspectiveDerive {
     }
   }
 
-  def productEncoder[A, Gen[_[_]]](
-      using gen: HKDProductGeneric.Aux[A, Gen],
-      encoders: Gen[Encoder]
+  def productEncoder[A](
+      using gen: HKDProductGeneric[A],
+      encoders: gen.Gen[Encoder]
   ): Encoder[A] = new Encoder[A] {
     private val names = gen.names
 
@@ -41,15 +42,5 @@ object PerspectiveDerive {
 
       Json.obj(list: _*)
     }
-  }
-
-  inline def deriveEncoder[A](using gen: HKDProductGeneric[A]): Encoder[A] = {
-    val encoders = scala.compiletime.summonInline[gen.Gen[Encoder]]
-    productEncoder[A, gen.Gen](using gen, encoders)
-  }
-
-  inline def deriveDecoder[A](using gen: HKDProductGeneric[A]): Decoder[A] = {
-    val decoders = scala.compiletime.summonInline[gen.Gen[Decoder]]
-    productDecoder[A, gen.Gen](using gen, decoders)
   }
 }

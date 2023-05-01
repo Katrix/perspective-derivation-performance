@@ -8,8 +8,8 @@ import perspective.derivation.*
 
 object PerspectiveUnrollingDerive {
 
-  inline given productDecoder[A, Gen[_[_]]](
-      using gen: InlineHKDProductGeneric.Aux[A, Gen]
+  inline given productDecoder[A](
+      using gen: InlineHKDProductGeneric[A]
   ): Decoder[A] = new Decoder[A] {
     private val decoders = gen.summonInstances[Decoder]
     private val names    = gen.names
@@ -24,8 +24,8 @@ object PerspectiveUnrollingDerive {
       }
   }
 
-  inline given productEncoder[A, Gen[_[_]]](
-      using gen: InlineHKDProductGeneric.Aux[A, Gen]
+  inline given productEncoder[A](
+      using gen: InlineHKDProductGeneric[A]
   ): Encoder[A] = new Encoder[A] {
     private val encoders = gen.summonInstances[Encoder]
     private val names    = gen.names
@@ -53,9 +53,4 @@ object PerspectiveUnrollingDerive {
       Json.obj(list: _*)
     }
   }
-
-  inline def deriveEncoder[A](implicit gen: InlineHKDProductGeneric[A]): Encoder[A] =
-    productEncoder[A, gen.Gen](using gen)
-  inline def deriveDecoder[A](implicit gen: InlineHKDProductGeneric[A]): Decoder[A] =
-    productDecoder[A, gen.Gen](using gen)
 }
