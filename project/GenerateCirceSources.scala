@@ -260,11 +260,10 @@ object GenerateCirceSources {
           "-cp",
           scalaInstance.allJars().toSeq.map(_.getAbsoluteFile).mkString(File.pathSeparator),
           if (isScala3) "dotty.tools.dotc.Main" else "scala.tools.nsc.Main",
-          if (classPath.nonEmpty) "-cp" else "",
-          classPath.map(_.getAbsoluteFile).mkString(File.pathSeparator),
           path.toAbsolutePath.toString
         ),
-        outputPath.toFile
+        outputPath.toFile,
+		"CLASSPATH" -> classPath.map(_.getAbsoluteFile).mkString(File.pathSeparator)
       )
       .!!
   }
@@ -456,7 +455,7 @@ object GenerateCirceSources {
           |    def ordinal: Int = ordinalLoc match {
           |      case "FIRST"  => 0
           |      case "MIDDLE" => size / 2
-          |      case "LAST"   => size
+          |      case "LAST"   => size - 1
           |    }
           |
           |    def getData: AnyRef = (size: @switch) match {
@@ -489,7 +488,7 @@ object GenerateCirceSources {
           |    def ordinal: Int = ordinalLoc match {
           |      case "FIRST"  => 0
           |      case "MIDDLE" => size / 2
-          |      case "LAST"   => size
+          |      case "LAST"   => size - 1
           |    }
           |
           |    def getData: Json = (size: @switch) match {
@@ -511,7 +510,7 @@ object GenerateCirceSources {
     )
   }
 
-  val typeSizes: Seq[Int]     = Seq(5) // Seq(1, 5, 10, 22, 23, 50, 75)
+  val typeSizes: Seq[Int]     = Seq(1, 5, 10, 22, 23, 50, 75)
   val fieldTypes: Seq[String] = Seq("Int", "String", "Double", "Boolean", "Json")
 
   lazy val circeDerivationCaseClasses: Seq[CaseClass] = typeSizes.map { size =>
@@ -560,7 +559,13 @@ object GenerateCirceSources {
       "sourcePattern" -> "BenchmarkCaseClass{0}Derives{1}",
       "depsClasspath" -> dependencies.mkString(File.pathSeparator)
     )
+	
+	val scala3Params = Map(
+	  "extraArgs" -> "-Xmax-inlines|128"
+	)
+	
+	val realParams = if (isScala3) params ++ scala3Params else params
 
-    params.map(t => s"${t._1}=${t._2}").mkString("-p ", " -p ", "")
+    realParams.map(t => s"${t._1}=${t._2}").mkString("-p ", " -p ", "")
   }
 }
